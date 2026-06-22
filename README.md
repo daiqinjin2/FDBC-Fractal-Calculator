@@ -1,46 +1,51 @@
-# FDBC-Fractal-Calculator (分数阶差分计盒维数计算器)
+# Fractional Difference Box Counting (FDBC) Calculator
 
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![.NET](https://img.shields.io/badge/.NET_Framework-4.7.2-blue.svg)
-![MATLAB](https://img.shields.io/badge/MATLAB-Supported-orange.svg)
+## 📝 Project Description (项目简介)
+This repository provides a comprehensive toolkit for calculating the **Fractal Dimension** of concentration distribution matrices using the **Fractional Difference Box Counting (FDBC)** method. It is highly suitable for quantitative microstructural analysis in material science (e.g., elemental distribution mapping from EPMA or EDS). 
 
-**English** | [中文简介](#中文简介)
+The toolkit consists of two parts:
+1. A C# Windows Forms application for data preprocessing (Gaussian smoothing, global statistical extraction).
+2. A MATLAB script for core FDBC calculation, linear regression, and visualization.
 
-## 📖 Project Description
-This repository provides the source code for the **Fractional Difference Box Counting (FDBC)** algorithm, specifically designed to calculate the fractal dimension of 2D concentration/mass fraction matrices (e.g., from EPMA or EDS mapping in materials science). 
+> **⚠️ Important Note on Data Dimension (重要提示):** > The default expected input for the concentration data matrix is **512x512**. If your matrix is rectangular or has a different resolution, please ensure you crop or interpolate it to a square matrix (preferably with side lengths that are powers of 2) before running the MATLAB core script to avoid grid division errors.
+> 
+> 本程序默认处理的数据矩阵尺寸为 **512x512**。如果您的原始原始数据是矩形或其他分辨率，请在导入 MATLAB 核心计算脚本前，将其裁剪或插值为正方形矩阵（边长建议为 2 的 n 次方），以避免网格划分时报错。
 
-To accommodate different user preferences, this repository includes both a **C# GUI application** (for quick, user-friendly calculations without programming) and **MATLAB scripts** (for batch processing and advanced academic plotting).
+---
 
-## 🛠️ Environment Dependencies
-### For C# GUI Application
+## 🛠️ Environment Requirements (环境依赖)
+### For C# Preprocessing Tool (C# 预处理工具):
 * **OS:** Windows 10 / 11
 * **Framework:** .NET Framework 4.7.2
-* **IDE:** Visual Studio 2019 / 2022 (Required only if you want to compile the source code)
+* **IDE:** Visual Studio 2019 / 2022
 
-### For MATLAB Scripts
-* **Software:** MATLAB R2021a or newer
-* **Toolbox:** Image Processing Toolbox (Required for the `imgaussfilt` 2D Gaussian smoothing function)
+### For MATLAB Calculation Script (MATLAB 计算脚本):
+* **Software:** MATLAB R2018a or newer
+* **Toolboxes:** Image Processing Toolbox (required for `imgaussfilt` function)
 
-## 🚀 Quick Start / Run Steps
+---
 
-### Option A: Using the C# GUI
-1. Open `FractalCalculator.sln` with Visual Studio.
-2. Compile and run the project (Press `F5`).
-3. On the interface, click **"Browse"** to select your input `.csv` data matrix.
-4. Set the Gaussian filter parameter `Sigma` (default is 1.0) and grid sizes.
-5. Click **"Calculate"**. The results, including the linear fitting plot, smoothed matrix, and statistical properties, will be automatically saved to your selected output directory.
+## 🚀 Running Steps (运行步骤)
 
-### Option B: Using MATLAB
-1. Open the `MATLAB_Scripts` folder.
-2. Ensure your input data (e.g., `Test.csv`) is placed in the same directory as the `.m` file.
-3. Open `fdbc_main.m` in MATLAB and click **Run**.
-4. The script will output statistical data to the console and automatically save high-resolution (600 dpi) linear fitting plots and calculation results to the current folder.
+### Step 1: Data Preprocessing (数据预处理)
+1. Run `FractalCalculator.sln` via Visual Studio.
+2. Select your raw concentration CSV file (`Input CSV File`).
+3. Set the smoothing parameter `Sigma` (default: 1.0) and the `Global Max` scale.
+4. Click **Calculate**. The tool will output the smoothed matrix (e.g., `Result-smoothed.csv`) and statistical data.
 
-## 📂 Repository Structure
-```text
-FDBC-Fractal-Calculator/
- ├── CSharp_Source/        # C# WinForms source code and .sln
- ├── MATLAB_Scripts/       # MATLAB core algorithm scripts
- ├── Demo_Data/            # Sample .csv files for testing
- ├── LICENSE.txt           # MIT License
- └── README.md             # Project documentation
+### Step 2: FDBC Calculation & Plotting (分形维数计算与绘图)
+1. Open `MATLAB_Scripts/fdbc_main.m` in MATLAB.
+2. Ensure the generated smoothed CSV file is in the same directory and rename it to `Test.csv` (or modify the `readmatrix` path in the script).
+3. Run the script. It will automatically:
+   - Calculate the box-counting dimension $D$.
+   - Plot the log-log linear regression figure (`1_Ni-DBC-ln(L)-ln(N).jpg`).
+   - Export detailed box-counting step data.
+
+---
+
+## 📚 How to Cite (如何引用)
+If you find this code helpful in your research, please cite our paper:
+*(The related paper is currently under review. The formal DOI and citation format will be updated upon publication.)*
+
+如果您在研究中使用了本代码，请引用我们的论文：
+*(相关论文目前正在审稿中，正式发表后将在此处更新 DOI 与引用格式。)*
