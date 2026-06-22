@@ -68,7 +68,6 @@ namespace FractalCalculator
             chartArea.AxisY.MajorGrid.LineColor = Color.LightGray;
             resultChart.ChartAreas.Add(chartArea);
             resultChart.Legends.Add(new Legend("Default") { Docking = Docking.Top });
-
             this.Controls.AddRange(new Control[] { lblInput, txtInputFile, btnInput, lblOutput, txtOutputFile, btnOutput, lblGrid, txtGridSizes, lblSigma, txtSigma, lblMax, txtGlobalMax, btnCalculate, resultChart });
         }
 
