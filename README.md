@@ -15,12 +15,12 @@ The toolkit consists of two parts:
 
 ## 🛠️ Environment Requirements (环境依赖)
 ### For C# Preprocessing Tool (C# 预处理工具):
-* **OS:** Windows 10 / 11
+* **OS:** Windows 10
 * **Framework:** .NET Framework 4.7.2
-* **IDE:** Visual Studio 2019 / 2022
+* **IDE:** Visual Studio 2021
 
 ### For MATLAB Calculation Script (MATLAB 计算脚本):
-* **Software:** MATLAB R2018a or newer
+* **Software:** MATLAB R2023b
 * **Toolboxes:** Image Processing Toolbox (required for `imgaussfilt` function)
 
 ---
