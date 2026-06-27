@@ -2,324 +2,355 @@
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 
 namespace FractalCalculator
 {
+    /// <summary>
+    /// FDBC Analysis Engine (Multi-Modal Input)
+    /// FDBC 分析引擎：支持 CSV 直接导入与预裁剪图像的色彩反向映射。
+    /// </summary>
     public partial class Form1 : Form
     {
-        private TextBox txtInputFile;
+        // UI Components / 界面组件
+        private RadioButton rbCsvMode, rbImageMode;
+        private Panel pnlCsvInput, pnlImageInput;
+        private TextBox txtInputCsv, txtInputImgData, txtInputImgCbar;
+
         private TextBox txtOutputFile;
         private TextBox txtGridSizes;
         private TextBox txtSigma;
+        private CheckBox chkUseGlobalMax;
         private TextBox txtGlobalMax;
         private Button btnCalculate;
         private Chart resultChart;
 
+        // Configuration path / 配置文件路径
+        private readonly string configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fdbc_config.txt");
+
         public Form1()
         {
+            InitializeComponent();
             InitializeUI();
+            LoadConfig();
         }
 
         private void InitializeUI()
         {
-            this.Text = "Fractional Difference Box Counting (FDBC) Calculator";
-            this.Size = new Size(600, 780);
+            this.Text = "FDBC Analysis Engine (CSV & Image Support)";
+            this.Size = new Size(600, 850); // Increased height for new UI / 增加高度适配新UI
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
-            // Select input file (选择输入文件)
-            Label lblInput = new Label { Text = "Input CSV File:", Location = new Point(20, 25), AutoSize = true };
-            txtInputFile = new TextBox { Location = new Point(120, 20), Width = 350 };
-            Button btnInput = new Button { Text = "Browse...", Location = new Point(480, 18) };
-            btnInput.Click += (s, e) => { txtInputFile.Text = SelectFile("Select CSV File", "*.csv", false) ?? txtInputFile.Text; };
+            // --- 1. Input Mode Selection / 输入模式选择 ---
+            Label lblMode = new Label { Text = "Input Mode (输入模式):", Location = new Point(20, 20), AutoSize = true, Font = new Font("Arial", 9, FontStyle.Bold) };
+            rbCsvMode = new RadioButton { Text = "CSV Matrix (纯数据矩阵)", Location = new Point(170, 18), Width = 180, Checked = true };
+            rbImageMode = new RadioButton { Text = "Image Map (图像色彩映射)", Location = new Point(360, 18), Width = 180 };
 
-            // Select output directory (选择输出目录)
-            Label lblOutput = new Label { Text = "Output:", Location = new Point(20, 65), AutoSize = true };
-            txtOutputFile = new TextBox { Location = new Point(120, 60), Width = 350 };
-            Button btnOutput = new Button { Text = "Browse...", Location = new Point(480, 58) };
+            // Mode Toggle Event / 模式切换事件
+            rbCsvMode.CheckedChanged += (s, e) => ToggleInputPanels();
+            rbImageMode.CheckedChanged += (s, e) => ToggleInputPanels();
+
+            // --- 2. CSV Input Panel / CSV 输入面板 ---
+            pnlCsvInput = new Panel { Location = new Point(20, 50), Size = new Size(550, 35) };
+            Label lblCsv = new Label { Text = "Data CSV:", Location = new Point(0, 8), AutoSize = true };
+            txtInputCsv = new TextBox { Location = new Point(100, 5), Width = 350 };
+            Button btnCsv = new Button { Text = "Browse...", Location = new Point(460, 3) };
+            btnCsv.Click += (s, e) => { txtInputCsv.Text = SelectFile("Select CSV", "*.csv", false) ?? txtInputCsv.Text; };
+            pnlCsvInput.Controls.AddRange(new Control[] { lblCsv, txtInputCsv, btnCsv });
+
+            // --- 3. Image Input Panel (Hidden by default) / 图像输入面板 (默认隐藏) ---
+            pnlImageInput = new Panel { Location = new Point(20, 50), Size = new Size(550, 75), Visible = false };
+
+            Label lblImgData = new Label { Text = "Data Image:", Location = new Point(0, 8), AutoSize = true };
+            txtInputImgData = new TextBox { Location = new Point(100, 5), Width = 350 };
+            Button btnImgData = new Button { Text = "Browse...", Location = new Point(460, 3) };
+            btnImgData.Click += (s, e) => { txtInputImgData.Text = SelectFile("Select Cropped Data Image", "*.png;*.jpg;*.jpeg;*.tiff;*.bmp", false) ?? txtInputImgData.Text; };
+
+            Label lblImgCbar = new Label { Text = "Colorbar:", Location = new Point(0, 43), AutoSize = true };
+            txtInputImgCbar = new TextBox { Location = new Point(100, 40), Width = 350 };
+            Button btnImgCbar = new Button { Text = "Browse...", Location = new Point(460, 38) };
+            btnImgCbar.Click += (s, e) => { txtInputImgCbar.Text = SelectFile("Select Cropped Colorbar", "*.png;*.jpg;*.jpeg;*.tiff;*.bmp", false) ?? txtInputImgCbar.Text; };
+
+            pnlImageInput.Controls.AddRange(new Control[] { lblImgData, txtInputImgData, btnImgData, lblImgCbar, txtInputImgCbar, btnImgCbar });
+
+            // --- 4. Common Settings / 通用设置区 ---
+            // Shifted Y-coordinates downwards / 向下平移 Y 坐标以腾出空间
+            int startY = 135;
+
+            Label lblOutput = new Label { Text = "Output Dir:", Location = new Point(20, startY + 5), AutoSize = true };
+            txtOutputFile = new TextBox { Location = new Point(120, startY), Width = 350 };
+            Button btnOutput = new Button { Text = "Browse...", Location = new Point(480, startY - 2) };
             btnOutput.Click += (s, e) => { txtOutputFile.Text = SelectFile("Save Result", "*.csv", true) ?? txtOutputFile.Text; };
 
-            // Grid parameters (网格参数)
-            Label lblGrid = new Label { Text = "Grid Size (L):", Location = new Point(20, 105), AutoSize = true };
-            txtGridSizes = new TextBox { Text = "2, 4, 8, 16, 32, 64, 128, 256", Location = new Point(120, 100), Width = 350 };
+            Label lblGrid = new Label { Text = "Grid Size (L):", Location = new Point(20, startY + 45), AutoSize = true };
+            txtGridSizes = new TextBox { Text = "2, 4, 8, 16, 32, 64, 128, 256", Location = new Point(120, startY + 40), Width = 350 };
 
-            // Sigma for Gaussian filter (高斯滤波 Sigma 参数)
-            Label lblSigma = new Label { Text = "Sigma (Filter):", Location = new Point(20, 145), AutoSize = true };
-            txtSigma = new TextBox { Text = "1.0", Location = new Point(120, 140), Width = 80 };
+            Label lblSigma = new Label { Text = "Sigma (Filter):", Location = new Point(20, startY + 85), AutoSize = true };
+            txtSigma = new TextBox { Text = "1.0", Location = new Point(120, startY + 80), Width = 70 };
 
-            // Global maximum scale for unified Z-axis (全局最大值标度，用于统一Z轴)
-            Label lblMax = new Label { Text = "Global Max (wt.%):", Location = new Point(220, 145), AutoSize = true };
-            txtGlobalMax = new TextBox { Text = "100.0", Location = new Point(340, 140), Width = 80 };
+            chkUseGlobalMax = new CheckBox { Text = "Enable Global Z-Max (全局高度):", Location = new Point(210, startY + 83), AutoSize = true, Checked = true };
+            txtGlobalMax = new TextBox { Text = "100.0", Location = new Point(430, startY + 80), Width = 60 };
+            chkUseGlobalMax.CheckedChanged += (s, e) => { txtGlobalMax.Enabled = chkUseGlobalMax.Checked; };
 
-            // Execution button (执行按钮)
-            btnCalculate = new Button { Text = "Calculate", Location = new Point(120, 180), Width = 150, Height = 40, BackColor = Color.LightGreen };
+            btnCalculate = new Button { Text = "Run FDBC Analysis", Location = new Point(410, startY + 120), Width = 150, Height = 40, BackColor = Color.LightSkyBlue };
             btnCalculate.Click += BtnCalculate_Click;
 
-            // Chart control settings (图表控件设置)
-            resultChart = new Chart { Location = new Point(20, 240), Size = new Size(540, 480) };
+            resultChart = new Chart { Location = new Point(20, startY + 175), Size = new Size(540, 480) };
             ChartArea chartArea = new ChartArea("MainArea");
             chartArea.AxisX.Title = "ln(L)";
-            chartArea.AxisX.TitleFont = new Font("Times New Roman", 14, FontStyle.Bold);
             chartArea.AxisY.Title = "ln(N)";
-            chartArea.AxisY.TitleFont = new Font("Times New Roman", 14, FontStyle.Bold);
-            chartArea.AxisX.MajorGrid.LineColor = Color.LightGray;
-            chartArea.AxisY.MajorGrid.LineColor = Color.LightGray;
             resultChart.ChartAreas.Add(chartArea);
             resultChart.Legends.Add(new Legend("Default") { Docking = Docking.Top });
-            this.Controls.AddRange(new Control[] { lblInput, txtInputFile, btnInput, lblOutput, txtOutputFile, btnOutput, lblGrid, txtGridSizes, lblSigma, txtSigma, lblMax, txtGlobalMax, btnCalculate, resultChart });
+
+            this.Controls.AddRange(new Control[] { lblMode, rbCsvMode, rbImageMode, pnlCsvInput, pnlImageInput,
+                                                   lblOutput, txtOutputFile, btnOutput, lblGrid, txtGridSizes,
+                                                   lblSigma, txtSigma, chkUseGlobalMax, txtGlobalMax, btnCalculate, resultChart });
+        }
+
+        // Dynamically show/hide panels based on selection / 动态显隐面板
+        private void ToggleInputPanels()
+        {
+            pnlCsvInput.Visible = rbCsvMode.Checked;
+            pnlImageInput.Visible = rbImageMode.Checked;
         }
 
         private string SelectFile(string title, string filter, bool isSave)
         {
             FileDialog dlg = isSave ? (FileDialog)new SaveFileDialog() : new OpenFileDialog();
             dlg.Title = title;
-            dlg.Filter = $"CSV File|{filter}";
-            if (isSave) dlg.FileName = "Result-logL-logN.csv";
+            dlg.Filter = $"Files|{filter}";
+            if (isSave) dlg.FileName = "FDBC_Result.csv";
             return dlg.ShowDialog() == DialogResult.OK ? dlg.FileName : null;
         }
 
-        private void BtnCalculate_Click(object sender, EventArgs e)
+        private async void BtnCalculate_Click(object sender, EventArgs e)
         {
             try
             {
-                if (string.IsNullOrEmpty(txtInputFile.Text) || string.IsNullOrEmpty(txtOutputFile.Text))
-                    throw new Exception("Please ensure both input and output paths are filled.");
+                if (string.IsNullOrEmpty(txtOutputFile.Text)) throw new Exception("Please select an output directory.");
 
+                // 1. 在主线程提前提取所有 UI 控件的值 (跨线程不能直接访问 UI)
                 int[] sValues = txtGridSizes.Text.Split(',').Select(val => int.Parse(val.Trim())).ToArray();
                 double sigma = double.Parse(txtSigma.Text);
-                double globalMax = double.Parse(txtGlobalMax.Text);
+                bool isCsvMode = rbCsvMode.Checked;
+                string csvPath = txtInputCsv.Text;
+                string imgDataPath = txtInputImgData.Text;
+                string imgCbarPath = txtInputImgCbar.Text;
+                bool useGlobalMax = chkUseGlobalMax.Checked;
+                double globalMaxText = double.Parse(txtGlobalMax.Text);
+                string outputDir = txtOutputFile.Text;
 
-                // Read original matrix (读取原矩阵)
-                double[,] originalImg = ReadCSV(txtInputFile.Text);
-                int M = originalImg.GetLength(0);
-                int G = M;
+                // 2. 更改按钮状态，提示用户正在后台计算
+                btnCalculate.Text = "Calculating... (后台计算中)";
+                btnCalculate.Enabled = false; // 禁用按钮防止重复点击
+                btnCalculate.BackColor = Color.LightGray;
 
-                // Apply Gaussian blur for noise reduction (应用高斯平滑滤波去噪)
-                double[,] smoothedImg = ApplyGaussianBlur(originalImg, sigma);
+                // 用于接收后台计算结果的变量
+                double[] finalX = null;
+                double[] finalY = null;
+                double finalSlope = 0;
+                double finalIntercept = 0;
+                double finalD = 0;
 
-                // Calculate global statistical features of concentration (计算浓度的全域统计学特征)
-                double sum = 0, sumSq = 0;
-                int totalPixels = M * M;
-                for (int r = 0; r < M; r++)
+                // 3. 将所有繁重的运算扔进后台线程，彻底解放 UI 防卡死
+                await Task.Run(() =>
                 {
-                    for (int c = 0; c < M; c++)
+                    double[,] originalMatrix;
+
+                    if (isCsvMode)
                     {
-                        double val = smoothedImg[r, c];
-                        sum += val;
+                        if (string.IsNullOrEmpty(csvPath)) throw new Exception("Please provide a CSV file.");
+                        originalMatrix = ReadCSV(csvPath);
                     }
-                }
-
-                double avgConc = sum / totalPixels;
-
-                // Calculate effective range (有效极差计算)
-                double[] flatArray = new double[totalPixels];
-                int index = 0;
-                for (int r = 0; r < M; r++)
-                {
-                    for (int c = 0; c < M; c++)
+                    else
                     {
-                        flatArray[index++] = smoothedImg[r, c];
+                        if (string.IsNullOrEmpty(imgDataPath) || string.IsNullOrEmpty(imgCbarPath))
+                            throw new Exception("Please provide BOTH Data Image and Colorbar Image.");
+
+                        // 调用优化过带裁剪的映射方法
+                        originalMatrix = ReadAndUnmapImage(imgDataPath, imgCbarPath);
                     }
-                }
 
-                // Sort all concentration points (对全部浓度点进行排序)
-                Array.Sort(flatArray);
+                    int rows = originalMatrix.GetLength(0);
+                    int cols = originalMatrix.GetLength(1);
+                    int G = Math.Min(rows, cols);
 
-                // Extract concentration values at 1% and 99% positions to mask extreme noise (提取 1% 和 99% 位置的浓度值，屏蔽首尾的极端噪点)
-                double effMinConc = flatArray[(int)(totalPixels * 0.01)];
-                double effMaxConc = flatArray[(int)(totalPixels * 0.99)];
-                double effRangeConc = effMaxConc - effMinConc;
+                    double[,] smoothedImg = ApplyGaussianBlur(originalMatrix, sigma);
 
-                // Calculate variance and standard deviation (计算方差和标准差)
-                for (int r = 0; r < M; r++)
-                {
-                    for (int c = 0; c < M; c++)
+                    double localMax = smoothedImg.Cast<double>().Max();
+                    double referenceMax = useGlobalMax ? globalMaxText : localMax;
+                    if (referenceMax <= 0) referenceMax = 1.0;
+
+                    double[,] P = new double[rows, cols];
+                    for (int r = 0; r < rows; r++)
+                        for (int c = 0; c < cols; c++)
+                            P[r, c] = smoothedImg[r, c] * ((double)G / referenceMax);
+
+                    finalX = new double[sValues.Length];
+                    finalY = new double[sValues.Length];
+
+                    for (int i = 0; i < sValues.Length; i++)
                     {
-                        double val = smoothedImg[r, c];
-                        sumSq += (val - avgConc) * (val - avgConc);
-                    }
-                }
-                double stdDev = Math.Sqrt(sumSq / totalPixels);
-
-                // Export independent statistics to a CSV file (导出单独的统计学 CSV 文件)
-                string statsFilePath = Path.Combine(Path.GetDirectoryName(txtOutputFile.Text),
-                                         Path.GetFileNameWithoutExtension(txtOutputFile.Text) + "-Statistics.csv");
-                using (StreamWriter swStats = new StreamWriter(statsFilePath))
-                {
-                    swStats.WriteLine("Average_wt,Std_Dev_Sigma,effMax_wt,effMin_wt,effRange_wt");
-                    swStats.WriteLine($"{avgConc:F4},{stdDev:F4},{effMaxConc:F4},{effMinConc:F4},{effRangeConc:F4}");
-                }
-
-                // Export smoothed mass fraction matrix (导出平滑后的质量百分数矩阵)
-                string smoothedFilePath = Path.Combine(Path.GetDirectoryName(txtOutputFile.Text),
-                                         Path.GetFileNameWithoutExtension(txtOutputFile.Text) + "-smoothed.csv");
-                ExportMatrixToCSV(smoothedImg, smoothedFilePath);
-
-                // Map mass fraction to unified pixel height / Z-axis scale (将质量分数映射为统一像素高度，即Z轴标度)
-                double[,] P = new double[M, M];
-                for (int r = 0; r < M; r++)
-                {
-                    for (int c = 0; c < M; c++)
-                    {
-                        P[r, c] = smoothedImg[r, c] * (M / globalMax);
-                    }
-                }
-
-                double[] x = new double[sValues.Length];
-                double[] y = new double[sValues.Length];
-
-                // Core computation of DBC fractal dimension based on processed P matrix (基于处理后的P矩阵的分形维数核心计算)
-                for (int i = 0; i < sValues.Length; i++)
-                {
-                    int L = sValues[i];
-                    int gridNum = M / L;
-                    double sumNr = 0;
-
-                    for (int r = 0; r < gridNum; r++)
-                    {
-                        for (int c = 0; c < gridNum; c++)
+                        int L = sValues[i];
+                        double sumNr = 0;
+                        for (int r = 0; r <= rows - L; r += L)
                         {
-                            double maxVal = double.MinValue;
-                            double minVal = double.MaxValue;
-
-                            for (int br = 0; br < L; br++)
+                            for (int c = 0; c <= cols - L; c += L)
                             {
-                                for (int bc = 0; bc < L; bc++)
-                                {
-                                    double val = P[r * L + br, c * L + bc];
-                                    if (val > maxVal) maxVal = val;
-                                    if (val < minVal) minVal = val;
-                                }
+                                double maxVal = double.MinValue, minVal = double.MaxValue;
+                                for (int br = 0; br < L; br++)
+                                    for (int bc = 0; bc < L; bc++)
+                                    {
+                                        double val = P[r + br, c + bc];
+                                        if (val > maxVal) maxVal = val;
+                                        if (val < minVal) minVal = val;
+                                    }
+                                sumNr += (maxVal - minVal) / (double)L + 1.0;
                             }
-                            // Fractional Difference Box Counting, FDBC (分数阶差分计盒法)
-                            sumNr += (maxVal - minVal) / (double)L + 1.0;
                         }
+                        finalX[i] = Math.Log((double)L);
+                        finalY[i] = Math.Log(sumNr);
                     }
-                    x[i] = Math.Log((double)L);
-                    y[i] = Math.Log(sumNr);
-                }
 
-                LinearRegression(x, y, out double slope, out double intercept);
-                double D = Math.Abs(slope);
+                    LinearRegression(finalX, finalY, out finalSlope, out finalIntercept);
+                    finalD = Math.Abs(finalSlope);
+                });
 
-                using (StreamWriter sw = new StreamWriter(txtOutputFile.Text))
-                {
-                    sw.WriteLine("ln(L),ln(N)");
-                    for (int i = 0; i < x.Length; i++)
-                        sw.WriteLine($"{x[i]:F6},{y[i]:F6}");
-                }
+                // 4. 后台计算完毕，安全地更新图表并恢复按钮状态
+                UpdateChart(finalX, finalY, finalSlope, finalIntercept, finalD);
+                SaveConfig();
 
-                UpdateChart(x, y, slope, intercept, D);
-
-                string imgPath = Path.Combine(Path.GetDirectoryName(txtOutputFile.Text),
-                                 Path.GetFileNameWithoutExtension(txtOutputFile.Text) + "-plot.jpg");
-                resultChart.SaveImage(imgPath, ChartImageFormat.Jpeg);
-
-                MessageBox.Show($"Calculation completed!\nFractal Dimension D = {D:F6}\nSmoothed matrix and statistics have been saved to the target directory.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"Analysis Completed! Fractal Dimension D = {finalD:F4}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Runtime Error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error: {ex.Message}", "Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // 无论成功失败，确保按钮恢复可点击状态
+                btnCalculate.Text = "Run FDBC Analysis";
+                btnCalculate.Enabled = true;
+                btnCalculate.BackColor = Color.LightSkyBlue;
             }
         }
 
-        // 2D Gaussian blur algorithm (二维高斯滤波算法)
+        #region Core Algorithms (Image Unmapping & Math) / 核心算法 (色彩反映射与数学)
+
+        /// <summary>
+        /// Reads RGB image, crops edges for JPGs to avoid compression artifacts, and maps to Z-matrix.
+        /// 读取RGB图像，针对JPG格式自动裁剪边缘以避免压缩伪影，并映射为 Z 矩阵。
+        /// </summary>
+        private double[,] ReadAndUnmapImage(string dataImagePath, string cbarImagePath)
+        {
+            using (Bitmap bmpData = new Bitmap(dataImagePath))
+            using (Bitmap bmpCbar = new Bitmap(cbarImagePath))
+            {
+                int originalRows = bmpData.Height;
+                int originalCols = bmpData.Width;
+
+                // 针对 JPG 格式自动裁剪边缘伪影
+                int margin = 0;
+                string ext = Path.GetExtension(dataImagePath).ToLower();
+                if (ext == ".jpg" || ext == ".jpeg")
+                {
+                    margin = 3; // 自动裁掉边缘最外圈的 3 个像素
+                }
+
+                int rows = originalRows - 2 * margin;
+                int cols = originalCols - 2 * margin;
+
+                if (rows <= 0 || cols <= 0)
+                    throw new Exception("Image is too small to crop edges. / 图像太小，无法执行边缘裁剪。");
+
+                double[,] zMatrix = new double[rows, cols];
+
+                // 提取调色板
+                int numColors = bmpCbar.Height;
+                int centerCol = bmpCbar.Width / 2;
+                Color[] palette = new Color[numColors];
+                for (int y = 0; y < numColors; y++)
+                {
+                    palette[y] = bmpCbar.GetPixel(centerCol, y);
+                }
+
+                // 开始像素映射
+                for (int r = 0; r < rows; r++)
+                {
+                    for (int c = 0; c < cols; c++)
+                    {
+                        // 加上 margin 偏移量，跳过边缘的污染像素
+                        Color pixel = bmpData.GetPixel(c + margin, r + margin);
+                        int bestIdx = 0;
+                        double minDist = double.MaxValue;
+
+                        for (int i = 0; i < numColors; i++)
+                        {
+                            Color palColor = palette[i];
+
+                            // 用直接相乘，大幅缓解算力卡顿
+                            double dist = (pixel.R - palColor.R) * (pixel.R - palColor.R) +
+                                          (pixel.G - palColor.G) * (pixel.G - palColor.G) +
+                                          (pixel.B - palColor.B) * (pixel.B - palColor.B);
+
+                            if (dist < minDist)
+                            {
+                                minDist = dist;
+                                bestIdx = i;
+                            }
+                        }
+                        zMatrix[r, c] = numColors - bestIdx;
+                    }
+                }
+                return zMatrix;
+            }
+        }
+
         private double[,] ApplyGaussianBlur(double[,] input, double sigma)
         {
-            if (sigma <= 0) return input; // Skip filtering if sigma is 0 (如果 sigma 为 0 则不滤波)
-
+            if (sigma <= 0) return input;
             int radius = (int)Math.Ceiling(sigma * 3);
             int size = radius * 2 + 1;
             double[,] kernel = new double[size, size];
             double sum = 0;
-
-            // Generate Gaussian kernel (生成高斯核)
             for (int i = -radius; i <= radius; i++)
-            {
                 for (int j = -radius; j <= radius; j++)
                 {
                     double val = Math.Exp(-(i * i + j * j) / (2 * sigma * sigma));
                     kernel[i + radius, j + radius] = val;
                     sum += val;
                 }
-            }
+            for (int i = 0; i < size; i++) for (int j = 0; j < size; j++) kernel[i, j] /= sum;
 
-            // Normalize Gaussian kernel (归一化高斯核)
-            for (int i = 0; i < size; i++)
-            {
-                for (int j = 0; j < size; j++)
-                {
-                    kernel[i, j] /= sum;
-                }
-            }
-
-            int rows = input.GetLength(0);
-            int cols = input.GetLength(1);
+            int rows = input.GetLength(0), cols = input.GetLength(1);
             double[,] output = new double[rows, cols];
-
-            // Execute convolution with edge clamping to prevent out-of-bounds (执行卷积，利用边缘钳位防止越界)
             for (int r = 0; r < rows; r++)
-            {
                 for (int c = 0; c < cols; c++)
                 {
                     double pixelSum = 0;
                     for (int i = -radius; i <= radius; i++)
-                    {
                         for (int j = -radius; j <= radius; j++)
                         {
-                            int row = r + i;
-                            int col = c + j;
-
-                            if (row < 0) row = 0;
-                            if (row >= rows) row = rows - 1;
-                            if (col < 0) col = 0;
-                            if (col >= cols) col = cols - 1;
-
+                            int row = Math.Max(0, Math.Min(rows - 1, r + i));
+                            int col = Math.Max(0, Math.Min(cols - 1, c + j));
                             pixelSum += input[row, col] * kernel[i + radius, j + radius];
                         }
-                    }
                     output[r, c] = pixelSum;
                 }
-            }
             return output;
-        }
-
-        // Export smoothed CSV matrix (导出平滑后的CSV矩阵)
-        private void ExportMatrixToCSV(double[,] matrix, string path)
-        {
-            using (StreamWriter sw = new StreamWriter(path))
-            {
-                int rows = matrix.GetLength(0);
-                int cols = matrix.GetLength(1);
-                for (int i = 0; i < rows; i++)
-                {
-                    string[] line = new string[cols];
-                    for (int j = 0; j < cols; j++)
-                    {
-                        line[j] = matrix[i, j].ToString("F4"); // Keep 4 decimal places (保留4位小数)
-                    }
-                    sw.WriteLine(string.Join(",", line));
-                }
-            }
         }
 
         private double[,] ReadCSV(string path)
         {
-            var lines = File.ReadAllLines(path);
-            int rows = lines.Length;
-            int cols = lines[0].Split(',').Length;
+            var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+            int rows = lines.Length, cols = lines[0].Split(',').Length;
             double[,] matrix = new double[rows, cols];
-
             for (int i = 0; i < rows; i++)
             {
                 var values = lines[i].Split(',');
-                for (int j = 0; j < cols; j++)
-                {
-                    if (double.TryParse(values[j], out double val))
-                        matrix[i, j] = val;
-                }
+                for (int j = 0; j < cols; j++) if (double.TryParse(values[j], out double val)) matrix[i, j] = val;
             }
             return matrix;
         }
@@ -327,40 +358,59 @@ namespace FractalCalculator
         private void LinearRegression(double[] x, double[] y, out double slope, out double intercept)
         {
             int n = x.Length;
-            double sumX = x.Sum(), sumY = y.Sum();
-            double sumXY = 0, sumX2 = 0;
-
-            for (int i = 0; i < n; i++)
-            {
-                sumXY += x[i] * y[i];
-                sumX2 += x[i] * x[i];
-            }
-
+            double sumX = x.Sum(), sumY = y.Sum(), sumXY = 0, sumX2 = 0;
+            for (int i = 0; i < n; i++) { sumXY += x[i] * y[i]; sumX2 += x[i] * x[i]; }
             slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
             intercept = (sumY - slope * sumX) / n;
         }
 
+        #endregion
+
+        #region Charting & Configuration / 图表更新与参数记忆
         private void UpdateChart(double[] x, double[] y, double slope, double intercept, double D)
         {
             resultChart.Series.Clear();
-
-            Series scatter = new Series("Data Points") { ChartType = SeriesChartType.Point, MarkerStyle = MarkerStyle.Circle, MarkerSize = 8, Color = Color.Blue };
-            Series line = new Series("Fitted Line (Box-Counting)") { ChartType = SeriesChartType.Line, BorderDashStyle = ChartDashStyle.Dash, BorderWidth = 2, Color = Color.Red };
-
-            for (int i = 0; i < x.Length; i++)
-            {
-                scatter.Points.AddXY(x[i], y[i]);
-                line.Points.AddXY(x[i], slope * x[i] + intercept);
-            }
-
-            resultChart.Series.Add(scatter);
-            resultChart.Series.Add(line);
+            Series scatter = new Series("Data") { ChartType = SeriesChartType.Point, MarkerSize = 9, Color = Color.Blue };
+            Series line = new Series("DBC Fit") { ChartType = SeriesChartType.Line, BorderDashStyle = ChartDashStyle.Dash, BorderWidth = 2, Color = Color.Red };
+            for (int i = 0; i < x.Length; i++) { scatter.Points.AddXY(x[i], y[i]); line.Points.AddXY(x[i], slope * x[i] + intercept); }
+            resultChart.Series.Add(scatter); resultChart.Series.Add(line);
             resultChart.Titles.Clear();
-            resultChart.Titles.Add(new Title($"Log-Log Plot of Grid Size L vs Box Count N (D={D:F6})", Docking.Top, new Font("Arial", 16, FontStyle.Bold), Color.Black));
+            resultChart.Titles.Add(new Title($"D = {D:F4} (Slope = {slope:F4})", Docking.Top, new Font("Arial", 16, FontStyle.Bold), Color.Black));
+            resultChart.ChartAreas[0].RecalculateAxesScale();
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private void SaveConfig()
         {
+            try
+            {
+                File.WriteAllLines(configFilePath, new string[] {
+                    rbCsvMode.Checked.ToString(), txtInputCsv.Text, txtInputImgData.Text, txtInputImgCbar.Text,
+                    txtGridSizes.Text, txtSigma.Text, chkUseGlobalMax.Checked.ToString(), txtGlobalMax.Text, txtOutputFile.Text
+                });
+            }
+            catch { }
         }
+
+        private void LoadConfig()
+        {
+            if (File.Exists(configFilePath))
+            {
+                try
+                {
+                    string[] lines = File.ReadAllLines(configFilePath);
+                    if (lines.Length >= 9)
+                    {
+                        if (bool.Parse(lines[0])) rbCsvMode.Checked = true; else rbImageMode.Checked = true;
+                        txtInputCsv.Text = lines[1]; txtInputImgData.Text = lines[2]; txtInputImgCbar.Text = lines[3];
+                        txtGridSizes.Text = lines[4]; txtSigma.Text = lines[5];
+                        chkUseGlobalMax.Checked = bool.Parse(lines[6]); txtGlobalMax.Text = lines[7]; txtOutputFile.Text = lines[8];
+                    }
+                }
+                catch { }
+            }
+        }
+        #endregion
+
+        private void Form1_Load(object sender, EventArgs e) { }
     }
 }
